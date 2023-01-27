@@ -6,7 +6,6 @@ use rayon::{
     prelude::{IntoParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
-use slicesimd::reduce_add_in_place;
 use std::thread::available_parallelism;
 
 pub fn benchmark_reduce_add(c: &mut Criterion) {

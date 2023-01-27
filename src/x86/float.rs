@@ -321,8 +321,10 @@ fn i32x4_reduce_add(x: __m128i) -> i32 {
         let sum64 = _mm_add_epi32(hi64, x);
         let hi32 = _mm_shufflelo_epi16(sum64, _MM_SHUFFLE(1, 0, 3, 2));    // Swap the low two elements
         let sum32 = _mm_add_epi32(sum64, hi32);
+        #[cfg(target_feature = "sse4")]
+        return _mm_extract_epi32(hl, 0);     // SSE4, even though it compiles to movd instead of a literal pextrd r32,xmm,0
+        #[cfg(not(target_feature = "sse4"))]
         return _mm_cvtsi128_si32(sum32);       // SSE2 movd
-        //return _mm_extract_epi32(hl, 0);     // SSE4, even though it compiles to movd instead of a literal pextrd r32,xmm,0
     }
 }
 
@@ -355,6 +357,52 @@ fn i32x16_reduce_add(v: __m512i) -> i32 {
     }
 }
 
+/* INT 64 */
+#[cfg(target_feature = "sse2")]
+#[inline]
+fn i64x2_reduce_add(vd: __m128i) -> i64 {
+    unsafe {
+        // don't worry, we only use addSD, never touching the garbage bits with an FP add
+        #[allow(invalid_value)]
+        let undef = core::mem::MaybeUninit::uninit().assume_init();
+        // there is no movhlpd
+        let shuftmp = _mm_movehl_ps(undef, _mm_castsi128_ps(vd));
+        let shuf = _mm_castps_si128(shuftmp);
+        return _mm_cvtsi128_si64(_mm_add_epi64(vd, shuf));
+    }
+}
+
+//#[cfg(target_feature = "avx")]
+#[inline]
+fn i64x4_reduce_add(v: __m256i) -> i64 {
+    unsafe {
+        // [ C D | A B ]
+        let shuf = _mm256_castsi256_pd(v);
+        let shuf = _mm256_shuffle_pd(shuf, shuf, _MM_SHUFFLE(2, 3, 0, 1));
+        let shuf = _mm256_castpd_si256(shuf);
+        // sums = [ D+C C+D | B+A A+B ]
+        let sums = _mm256_add_epi64(v, shuf);
+        //  [   C   D | D+C C+D ]  // let the compiler avoid a mov by reusing shuf
+        let shuf = _mm256_shuffle_pd(_mm256_castsi256_pd(shuf), _mm256_castsi256_pd(sums), _MM_SHUFFLE(0, 1, 4, 5));
+        let sums = _mm256_add_epi64(sums, _mm256_castpd_si256(shuf));
+        return _mm256_cvtsd_f64(sums);
+    }
+}
+
+#[cfg(all(feature = "nightly", target_feature = "avx512f"))]
+#[inline]
+fn f64x8_reduce_add(v: __m512d) -> f64 {
+    unsafe {
+        let vlow = _mm512_castpd512_pd256(v);
+        // high 128
+        let vhigh = _mm512_extractf64x4_pd(v, 1);
+        // add the low 128
+        let vlow = _mm256_add_pd(vlow, vhigh);
+        // and inline the sse3 version, which is optimal for AVX
+        return f64x4_reduce_add(vlow);
+    }
+}
+
 #[inline]
 #[allow(non_snake_case)]
 const fn _MM_SHUFFLE(z: u32, y: u32, x: u32, w: u32) -> i32 {
@@ -374,12 +422,7 @@ mod tests {
         };
     }
 
-    #[cfg(target_arch = "x86")]
-    use core::arch::x86::*;
-    #[cfg(target_arch = "x86_64")]
-    use core::arch::x86_64::*;
     use rand::{distributions::Standard, thread_rng, Rng};
-
     use crate::reduce_add_f32_in_place;
 
     #[test]

@@ -8,6 +8,7 @@ edition = "2021"
 default = ["std"]
 std = ["alloc"]
 alloc = []
+naive = []
 
 [dependencies]
 bytemuck = "1.13.0"

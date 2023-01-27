@@ -11,6 +11,7 @@ use docfg::docfg;
 #[cfg(feature = "alloc")]
 pub(crate) extern crate alloc;
 
+#[allow(unused_macros)]
 macro_rules! flat_mod {
     ($($i:ident),+) => {
         $(
@@ -21,11 +22,15 @@ macro_rules! flat_mod {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse"))] {
+    if #[cfg(feature = "naive")] {
+        mod naive;
+        pub(crate) use naive::*;
+    } else if #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse"))] {
         mod x86;
         pub(crate) use x86::*;
     } else {
-        flat_mod! { naive }
+        mod naive;
+        pub(crate) use naive::*;
     }
 }
 
@@ -34,11 +39,14 @@ pub trait SliceExt {
 
     /// Adds up all the values in the slice horizontally.
     ///
-    /// Since this method doesn't have mutable access to it's target, it will use a thread local "compute space"
+    /// Since this method doesn't have mutable access to it's target, it may use a thread local "compute space"
     /// to store the temporary results of the operations.
     ///
     /// If this method is called on a slice of integers (signed or unsigned), the operation will be done with wrapping addition.
     ///
+    /// > # Note
+    /// > When using naive mode, no compute space will be used
+    /// 
     /// # Example
     /// ```rust
     /// use simdslice::*;
@@ -51,11 +59,14 @@ pub trait SliceExt {
 
     /// Adds up all the values in the slice horizontaly, using `space` to store temporary data.
     ///
-    /// Since this method doesn't have mutable access to it's target, it will use `space` as a "compute space"
+    /// Since this method doesn't have mutable access to it's target, it may use `space` as a "compute space"
     /// to store the temporary results of the operations.
     ///
     /// If this method is called on a slice of integers (signed or unsigned), the operation will be done with wrapping addition.
     ///
+    /// > # Note
+    /// > When using naive mode, `space` will be used
+    /// 
     /// # Example
     /// ```rust
     /// #![feature(maybe_uninit_uninit_array)]
@@ -170,6 +181,14 @@ pub const fn is_x86_sse3() -> bool {
 }
 
 #[inline]
+pub const fn is_x86_sse4() -> bool {
+    return cfg!(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "sse4"
+    ));
+}
+
+#[inline]
 pub const fn is_x86_avx() -> bool {
     return cfg!(all(
         any(target_arch = "x86", target_arch = "x86_64"),
@@ -189,5 +208,5 @@ pub const fn is_x86_avx512() -> bool {
 /* NAIVE */
 #[inline]
 pub const fn is_naive() -> bool {
-    return !is_x86_sse();
+    return cfg!(feature = "naive") || !is_x86_sse();
 }
