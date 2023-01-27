@@ -10,7 +10,9 @@ std = ["alloc"]
 alloc = []
 
 [dependencies]
+bytemuck = "1.13.0"
 cfg-if = "1.0.0"
+concat-idents = "1.1.4"
 docfg = "0.1.0"
 static_assertions = "1.1.0"
 

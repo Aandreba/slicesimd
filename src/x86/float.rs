@@ -4,7 +4,7 @@
 use core::arch::x86::*;
 #[cfg(target_arch = "x86_64")]
 use core::arch::x86_64::*;
-use core::{cell::UnsafeCell, mem::MaybeUninit};
+use core::{cell::UnsafeCell};
 #[allow(unused_imports)]
 use docfg::docfg;
 
@@ -15,7 +15,7 @@ thread_local! {
 
 macro_rules! impl_reduce_add {
     (
-        $t:ident as $fn:ident + $spaced:ident {
+        $t:ident as $fn:ident + $spaced:ident + $compute:ident {
             $(#[cfg($meta128:meta)])? $intr128:ident with $load128:ident,
             $(#[cfg($meta256:meta)])? $intr256:ident with $load256:ident,
             $(#[cfg($meta512:meta)])? $intr512:ident with $load512:ident
@@ -38,7 +38,7 @@ macro_rules! impl_reduce_add {
                     }
         
                     for i in 0..div {
-                        let vec = $load512(iter.as_ptr().add(SIMD512_LEN * i));
+                        let vec = $load512(iter.as_ptr().add(SIMD512_LEN * i).cast());
                         *iter.get_unchecked_mut(i) = $intr512(vec)
                     }
         
@@ -54,7 +54,7 @@ macro_rules! impl_reduce_add {
                     }
         
                     for i in 0..div {
-                        let vec = $load256(iter.as_ptr().add(SIMD256_LEN * i));
+                        let vec = $load256(iter.as_ptr().add(SIMD256_LEN * i).cast());
                         *iter.get_unchecked_mut(i) = $intr512(vec)
                     }
         
@@ -69,7 +69,7 @@ macro_rules! impl_reduce_add {
                     }
         
                     for i in 0..div {
-                        let vec = $load128(iter.as_ptr().add(SIMD128_LEN * i));
+                        let vec = $load128(iter.as_ptr().add(SIMD128_LEN * i).cast());
                         *iter.get_unchecked_mut(i) = $intr128(vec)
                     }
         
@@ -80,7 +80,7 @@ macro_rules! impl_reduce_add {
         }
 
         $(#[docfg($meta128)])?
-        pub fn $spaced (iter: &[$t], space: &mut [MaybeUninit<$t>]) -> $t {
+        pub fn $spaced (iter: &[$t], space: &mut [core::mem::MaybeUninit<$t>]) -> $t {
             const SIMD128_LEN: usize = 16 / core::mem::size_of::<$t>();
             $(#[cfg($meta256)])?
             const SIMD256_LEN: usize = 32 / core::mem::size_of::<$t>();
@@ -96,7 +96,7 @@ macro_rules! impl_reduce_add {
                 }
     
                 for i in 0..div {
-                    let vec = $load512(iter.as_ptr().add(SIMD512_LEN * i));
+                    let vec = $load512(iter.as_ptr().add(SIMD512_LEN * i).cast());
                     space[i] = $intr512(vec)
                 }
 
@@ -118,7 +118,7 @@ macro_rules! impl_reduce_add {
                 }
     
                 for i in 0..div {
-                    let vec = $load256(iter.as_ptr().add(SIMD256_LEN * i));
+                    let vec = $load256(iter.as_ptr().add(SIMD256_LEN * i).cast());
                     space[i] = $intr256(vec)
                 }
 
@@ -133,7 +133,7 @@ macro_rules! impl_reduce_add {
                 }
     
                 for i in 0..div {
-                    let vec = $load128(iter.as_ptr().add(SIMD128_LEN * i));
+                    let vec = $load128(iter.as_ptr().add(SIMD128_LEN * i).cast());
                     space[i] = $intr128(vec)
                 }
 
@@ -158,16 +158,51 @@ macro_rules! impl_reduce_add {
                 return spaced_128(iter, space)
             }
         }
+
+        #[docfg(feature = "std")]
+        pub fn $compute (iter: &[$t]) -> $t {
+            COMPUTE_SPACE.with(|x| unsafe {
+                const DELTA: usize = core::mem::size_of::<u64>() / core::mem::size_of::<$t>();
+
+                let space = &mut *x.get();
+                space.clear(); // avoid copying previous values if resizing
+                space.reserve((DELTA - 1) + iter.len() / DELTA);
+        
+                $spaced(iter, core::slice::from_raw_parts_mut(space.as_mut_ptr().cast(), space.capacity() / DELTA))
+            })
+        }
     };
 }
 
 impl_reduce_add! {
-    f32 as reduce_add_f32_in_place + reduce_add_f32_with_space {
+    f32 as reduce_add_f32_in_place + reduce_add_f32_in_space + reduce_add_f32 {
         f32x4_reduce_add with _mm_loadu_ps,
         #[cfg(target_feature = "avx")]
         f32x8_reduce_add with _mm256_loadu_ps,
         #[cfg(all(feature = "nightly", target_feature = "avx512f"))]
         f32x16_reduce_add with _mm512_loadu_ps
+    }
+}
+
+impl_reduce_add! {
+    i32 as reduce_add_i32_in_place + reduce_add_i32_in_space + reduce_add_i32 {
+        #[cfg(target_feature = "sse2")]
+        i32x4_reduce_add with _mm_loadu_si64,
+        #[cfg(target_feature = "avx")]
+        i32x8_reduce_add with _mm256_loadu_epi64,
+        #[cfg(all(feature = "nightly", target_feature = "avx512f"))]
+        i32x16_reduce_add with _mm512_loadu_epi32
+    }
+}
+
+impl_reduce_add! {
+    f64 as reduce_add_f64_in_place + reduce_add_f64_in_space + reduce_add_f64 {
+        #[cfg(target_feature = "sse2")]
+        f64x2_reduce_add with _mm_loadu_pd,
+        #[cfg(target_feature = "avx")]
+        f64x4_reduce_add with _mm256_loadu_pd,
+        #[cfg(all(feature = "nightly", target_feature = "avx512f"))]
+        f64x8_reduce_add with _mm512_loadu_pd
     }
 }
 
@@ -322,7 +357,7 @@ fn i32x16_reduce_add(v: __m512i) -> i32 {
 
 #[inline]
 #[allow(non_snake_case)]
-pub const fn _MM_SHUFFLE(z: u32, y: u32, x: u32, w: u32) -> i32 {
+const fn _MM_SHUFFLE(z: u32, y: u32, x: u32, w: u32) -> i32 {
     ((z << 6) | (y << 4) | (x << 2) | w) as i32
 }
 
@@ -387,49 +422,4 @@ mod tests {
             v.iter().sum::<f32>(),
             reduce_add_f32_in_place(&mut v)
         );
-    }
-
-    #[test]
-    fn test_f32() {
-        use crate::reduce_add_in_place;
-
-        // let mut v = thread_rng()
-        //     .sample_iter(Standard)
-        //     .take(3)
-        //     .collect::<alloc::vec::Vec<_>>();
-        // assert_eq!(reduce_add_in_place(&mut v), v.iter().sum());
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(4)
-            .collect::<alloc::vec::Vec<_>>();
-
-        assert_feq!(4.0, v.iter().sum::<f32>(), reduce_add_in_place(&mut v));
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(5)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(5.0, v.iter().sum::<f32>(), reduce_add_in_place(&mut v));
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(10_000)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(
-            10_000f32,
-            v.iter().sum::<f32>(),
-            reduce_add_in_place(&mut v)
-        );
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(120_315)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(
-            120_315f32,
-            v.iter().sum::<f32>(),
-            reduce_add_in_place(&mut v)
-        );
-    }
-}
+}}
