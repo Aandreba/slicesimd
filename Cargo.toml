@@ -8,9 +8,9 @@ edition = "2021"
 default = ["std"]
 std = ["alloc"]
 alloc = []
-naive = []
 
 [dependencies]
+slicesimd_proc = { path = "slicesimd_proc", version = "0.1.0" }
 bitflags = "1.3.2"
 bytemuck = "1.13.0"
 cfg-if = "1.0.0"
@@ -30,3 +30,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 [[bench]]
 name = "reduce_add"
 harness = false
+
+[workspace]
+members = ["slicesimd_proc"]

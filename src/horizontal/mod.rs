@@ -15,15 +15,11 @@ macro_rules! flat_mod {
 }
 
 cfg_if::cfg_if! {
-    if #[cfg(feature = "naive")] {
-        mod naive;
-        pub(crate) use naive::*;
-    } else if #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse"))] {
+    if #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse"))] {
         mod x86;
         pub(crate) use x86::*;
     } else {
-        mod naive;
-        pub(crate) use naive::*;
+        todo!()
     }
 }
 

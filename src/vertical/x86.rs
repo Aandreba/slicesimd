@@ -189,9 +189,119 @@ impl_op! {
     }
 }
 
+/* SUBTRACTIONS */
+impl_op! {
+    f32 => sub {
+        __m128: _mm_sub_ps & _mm_loadu_ps,
+        #[cfg(target_feature = "avx")]
+        __m256: _mm256_sub_ps & _mm256_loadu_ps,
+        #[cfg(target_feature = "avx512f")]
+        __m512: _mm512_sub_ps & _mm512_loadu_ps
+    }
+}
+
+impl_op! {
+    f64 => sub {
+        #[cfg(target_feature = "sse2")]
+        __m128d: _mm_sub_pd & _mm_loadu_pd,
+        #[cfg(target_feature = "avx")]
+        __m256d: _mm256_sub_pd & _mm256_loadu_pd,
+        #[cfg(target_feature = "avx512f")]
+        __m512d: _mm512_sub_pd & _mm512_loadu_pd
+    }
+}
+
+impl_op! {
+    i64 & u64 => sub {
+        #[cfg(target_feature = "sse2")]
+        __m128i: _mm_sub_epi64 & _mm_loadu_si64,
+        #[cfg(target_feature = "avx2")]
+        __m256i: _mm256_sub_epi64 & _mm256_loadu_si256,
+        #[cfg(target_feature = "avx512f")]
+        __m512i: _mm512_sub_epi64 & _mm512_loadu_si64
+    }
+}
+
+impl_op! {
+    i32 & u32 => sub {
+        #[cfg(target_feature = "sse2")]
+        __m128i: _mm_sub_epi32 & _mm_loadu_si64,
+        #[cfg(target_feature = "avx2")]
+        __m256i: _mm256_sub_epi32 & _mm256_loadu_si256,
+        #[cfg(target_feature = "avx512f")]
+        __m512i: _mm512_sub_epi32 & _mm512_loadu_si64
+    }
+}
+
+impl_op! {
+    i16 & u16 => sub {
+        #[cfg(target_feature = "sse2")]
+        __m128i: _mm_sub_epi16 & _mm_loadu_si64,
+        #[cfg(target_feature = "avx2")]
+        __m256i: _mm256_sub_epi16 & _mm256_loadu_si256,
+        #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw"))]
+        __m512i: _mm512_sub_epi16 & _mm512_loadu_si64
+    }
+}
+
+impl_op! {
+    i8 & u8 => sub {
+        #[cfg(target_feature = "sse2")]
+        __m128i: _mm_sub_epi8 & _mm_loadu_si64,
+        #[cfg(target_feature = "avx2")]
+        __m256i: _mm256_sub_epi8 & _mm256_loadu_si256,
+        #[cfg(all(target_feature = "avx512f", target_feature = "avx512bw"))]
+        __m512i: _mm512_sub_epi8 & _mm512_loadu_si64
+    }
+}
+
+/* MULTIPLICATIONS */
+impl_op! {
+    f32 => mul {
+        __m128: _mm_mul_ps & _mm_loadu_ps,
+        #[cfg(target_feature = "avx")]
+        __m256: _mm256_mul_ps & _mm256_loadu_ps,
+        #[cfg(target_feature = "avx512f")]
+        __m512: _mm512_mul_ps & _mm512_loadu_ps
+    }
+}
+
+impl_op! {
+    f64 => mul {
+        #[cfg(target_feature = "sse2")]
+        __m128d: _mm_mul_pd & _mm_loadu_pd,
+        #[cfg(target_feature = "avx")]
+        __m256d: _mm256_mul_pd & _mm256_loadu_pd,
+        #[cfg(target_feature = "avx512f")]
+        __m512d: _mm512_mul_pd & _mm512_loadu_pd
+    }
+}
+
+/* DIVISIONS */
+impl_op! {
+    f32 => div {
+        __m128: _mm_div_ps & _mm_loadu_ps,
+        #[cfg(target_feature = "avx")]
+        __m256: _mm256_div_ps & _mm256_loadu_ps,
+        #[cfg(target_feature = "avx512f")]
+        __m512: _mm512_div_ps & _mm512_loadu_ps
+    }
+}
+
+impl_op! {
+    f64 => div {
+        #[cfg(target_feature = "sse2")]
+        __m128d: _mm_div_pd & _mm_loadu_pd,
+        #[cfg(target_feature = "avx")]
+        __m256d: _mm256_div_pd & _mm256_loadu_pd,
+        #[cfg(target_feature = "avx512f")]
+        __m512d: _mm512_div_pd & _mm512_loadu_pd
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::VerticalAdd;
+    use crate::SimdVerticalAdd;
 
     #[test]
     fn f32 () {

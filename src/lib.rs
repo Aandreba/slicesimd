@@ -2,11 +2,27 @@
 #![cfg_attr(feature = "nightly", feature(stdsimd))]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub(crate) mod sealed {
+    use bytemuck::Pod;
+
+    pub trait Slice
+    where
+        for<'a> &'a Self: IntoIterator<Item = &'a Self::Element>,
+        for<'a> &'a mut Self: IntoIterator<Item = &'a mut Self::Element>,
+    {
+        type Element: Pod;
+    }
+
+    impl<T> Slice for [T] {
+        type Element = T;
+    }
+}
+
 pub mod horizontal;
 pub use horizontal::HorizontalSlice;
 
 pub mod vertical;
-pub use vertical::VerticalAdd;
+pub use vertical::SimdVerticalAdd;
 
 #[cfg(feature = "alloc")]
 pub(crate) extern crate alloc;
@@ -97,6 +113,6 @@ pub mod checks {
     /// This is true when the `naive` feature is enabled, or as a fallback if no supported feature set is detected.
     #[inline]
     pub const fn is_naive() -> bool {
-        return cfg!(feature = "naive") || !is_x86_sse();
+        return !is_x86_sse();
     }
 }
