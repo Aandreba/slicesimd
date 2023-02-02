@@ -24,28 +24,6 @@ macro_rules! impl_add {
                     items.iter().sum()
                 }
             });
-
-            /* REDUCE_MUL */
-            concat_idents!(f = reduce_mul_, $t {
-                #[inline]
-                pub fn f (items: &[$t]) -> $t {
-                    items.iter().product()
-                }
-            });
-
-            concat_idents!(f = reduce_mul_, $t, _in_place {
-                #[inline]
-                pub fn f (items: &mut [$t]) -> $t {
-                    items.iter().product()
-                }
-            });
-
-            concat_idents!(f = reduce_mul_, $t, _in_space {
-                #[inline]
-                pub fn f (items: &[$t], _space: &mut [core::mem::MaybeUninit<$t>]) -> $t {
-                    items.iter().product()
-                }
-            });
         )+
     }
 }

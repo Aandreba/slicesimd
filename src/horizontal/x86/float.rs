@@ -206,18 +206,6 @@ impl_reduce_add! {
     }
 }
 
-// #[docfg(feature = "std")]
-// pub fn reduce_add(iter: &[f32]) -> f32 {
-//     COMPUTE_SPACE.with(|x| unsafe {
-//         const DELTA: usize = core::mem::size_of::<u64>() / core::mem::size_of::<f32>();
-//         let space = &mut *x.get();
-//         space.clear(); // avoid copying previous values if resizing
-//         space.reserve((DELTA - 1) + iter.len() / DELTA);
-// 
-//         reduce_add_with_space(iter, core::slice::from_raw_parts_mut(space.as_mut_ptr(), (DELTA - 1) + space.capacity() / DELTA))
-//     })
-// }
-
 /* FLOATS */
 #[inline]
 fn f32x4_reduce_add(v: __m128) -> f32 {
@@ -357,112 +345,8 @@ fn i32x16_reduce_add(v: __m512i) -> i32 {
     }
 }
 
-/* INT 64 */
-#[cfg(target_feature = "sse2")]
-#[inline]
-fn i64x2_reduce_add(vd: __m128i) -> i64 {
-    unsafe {
-        // don't worry, we only use addSD, never touching the garbage bits with an FP add
-        #[allow(invalid_value)]
-        let undef = core::mem::MaybeUninit::uninit().assume_init();
-        // there is no movhlpd
-        let shuftmp = _mm_movehl_ps(undef, _mm_castsi128_ps(vd));
-        let shuf = _mm_castps_si128(shuftmp);
-        return _mm_cvtsi128_si64(_mm_add_epi64(vd, shuf));
-    }
-}
-
-//#[cfg(target_feature = "avx")]
-#[inline]
-fn i64x4_reduce_add(v: __m256i) -> i64 {
-    unsafe {
-        // [ C D | A B ]
-        let shuf = _mm256_castsi256_pd(v);
-        let shuf = _mm256_shuffle_pd(shuf, shuf, _MM_SHUFFLE(2, 3, 0, 1));
-        let shuf = _mm256_castpd_si256(shuf);
-        // sums = [ D+C C+D | B+A A+B ]
-        let sums = _mm256_add_epi64(v, shuf);
-        //  [   C   D | D+C C+D ]  // let the compiler avoid a mov by reusing shuf
-        let shuf = _mm256_shuffle_pd(_mm256_castsi256_pd(shuf), _mm256_castsi256_pd(sums), _MM_SHUFFLE(0, 1, 4, 5));
-        let sums = _mm256_add_epi64(sums, _mm256_castpd_si256(shuf));
-        return _mm256_cvtsd_f64(sums);
-    }
-}
-
-#[cfg(all(feature = "nightly", target_feature = "avx512f"))]
-#[inline]
-fn f64x8_reduce_add(v: __m512d) -> f64 {
-    unsafe {
-        let vlow = _mm512_castpd512_pd256(v);
-        // high 128
-        let vhigh = _mm512_extractf64x4_pd(v, 1);
-        // add the low 128
-        let vlow = _mm256_add_pd(vlow, vhigh);
-        // and inline the sse3 version, which is optimal for AVX
-        return f64x4_reduce_add(vlow);
-    }
-}
-
 #[inline]
 #[allow(non_snake_case)]
 const fn _MM_SHUFFLE(z: u32, y: u32, x: u32, w: u32) -> i32 {
     ((z << 6) | (y << 4) | (x << 2) | w) as i32
 }
-
-#[cfg(all(test, feature = "std"))]
-mod tests {
-    macro_rules! assert_feq {
-        ($weight:expr, $lhs:expr, $rhs:expr) => {
-            assert!(
-                ($lhs - $rhs).abs() <= $weight * f32::EPSILON,
-                "{} v. {}",
-                $lhs,
-                $rhs
-            )
-        };
-    }
-
-    use rand::{distributions::Standard, thread_rng, Rng};
-    use crate::reduce_add_f32_in_place;
-
-    #[test]
-    fn test_f32() {
-        // let mut v = thread_rng()
-        //     .sample_iter(Standard)
-        //     .take(3)
-        //     .collect::<alloc::vec::Vec<_>>();
-        // assert_eq!(reduce_add_in_place(&mut v), v.iter().sum());
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(4)
-            .collect::<alloc::vec::Vec<_>>();
-
-        assert_feq!(4.0, v.iter().sum::<f32>(), reduce_add_f32_in_place(&mut v));
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(5)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(5.0, v.iter().sum::<f32>(), reduce_add_f32_in_place(&mut v));
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(10_000)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(
-            10_000f32,
-            v.iter().sum::<f32>(),
-            reduce_add_f32_in_place(&mut v)
-        );
-
-        let mut v = thread_rng()
-            .sample_iter(Standard)
-            .take(120_315)
-            .collect::<alloc::vec::Vec<_>>();
-        assert_feq!(
-            120_315f32,
-            v.iter().sum::<f32>(),
-            reduce_add_f32_in_place(&mut v)
-        );
-}}
