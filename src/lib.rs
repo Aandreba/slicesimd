@@ -4,17 +4,42 @@
 
 pub(crate) mod sealed {
     use bytemuck::Pod;
+    use num_traits::{NumOps, NumAssignOps};
 
-    pub trait Slice
-    where
-        for<'a> &'a Self: IntoIterator<Item = &'a Self::Element>,
-        for<'a> &'a mut Self: IntoIterator<Item = &'a mut Self::Element>,
-    {
-        type Element: Pod;
+    #[doc(hidden)]
+    pub trait Slice {
+        type Element: Pod + NumOps + NumAssignOps + for<'a> NumAssignOps<&'a Self::Element>;
+        type Iter<'a>: Iterator<Item = &'a Self::Element> where Self: 'a;
+        type IterMut<'a>: Iterator<Item = &'a mut Self::Element> where Self: 'a;
+        
+        fn len (&self) -> usize;
+        fn iter (&self) -> Self::Iter<'_>;
+        fn iter_mut (&mut self) -> Self::IterMut<'_>;
     }
 
-    impl<T> Slice for [T] {
-        type Element = T;
+    macro_rules! impl_slice {
+        ($($t:ident),+) => {
+            $(
+                impl Slice for [$t] {
+                    type Element = $t;
+                    type Iter<'a> = core::slice::Iter<'a, $t>;
+                    type IterMut<'a> = core::slice::IterMut<'a, $t>;
+            
+                    #[inline]
+                    fn len (&self) -> usize { <[$t]>::len(self) }
+                    #[inline]
+                    fn iter (&self) -> Self::Iter<'_> { self.into_iter() }
+                    #[inline]
+                    fn iter_mut (&mut self) -> Self::IterMut<'_> { self.into_iter() }
+                }  
+            )+
+        };
+    }
+
+    impl_slice! {
+        u8, u16, u32, u64,
+        i8, i16, i32, i64,
+        f32, f64
     }
 }
 
@@ -22,7 +47,7 @@ pub mod horizontal;
 pub use horizontal::HorizontalSlice;
 
 pub mod vertical;
-pub use vertical::SimdVerticalAdd;
+pub use vertical::{VerticalAdd, VerticalSub, VerticalMul, VerticalDiv};
 
 #[cfg(feature = "alloc")]
 pub(crate) extern crate alloc;
